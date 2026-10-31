@@ -219,11 +219,11 @@ final class PhraseStore: ObservableObject {
     ) async throws {
         guard count > 0 else { return }
         let now = Date()
-        let latestDate = existing.compactMap { $0.trigger?.nextTriggerDate() }.max()
+        let latestDate = existing.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }.max()
         let afterDate = max(now, latestDate ?? now)
         let futureDates = nextScheduledDates(after: afterDate, limit: count)
         let lastText = existing.compactMap { request -> (Date, String)? in
-            guard let date = request.trigger?.nextTriggerDate() else { return nil }
+            guard let date = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() else { return nil }
             return (date, request.content.body)
         }.max(by: { $0.0 < $1.0 })?.1
         let texts = randomTexts(count: futureDates.count, avoidingFirst: lastText)
@@ -298,7 +298,7 @@ final class PhraseStore: ObservableObject {
         if let known { requests = known }
         else { requests = await existingRequests(center: UNUserNotificationCenter.current()) }
         let sorted = requests.compactMap { request -> UpcomingNotice? in
-            guard let date = request.trigger?.nextTriggerDate() else { return nil }
+            guard let date = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() else { return nil }
             return UpcomingNotice(id: request.identifier, date: date, text: request.content.body)
         }.sorted { $0.date < $1.date }
         scheduledCount = requests.count
