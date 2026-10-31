@@ -24,7 +24,7 @@ struct ContentView: View {
             Form {
                 Section {
                     if store.phrases.isEmpty {
-                        Label("Todavía no has agregado frases.", systemImage: "text.quote")
+                        Label("Todavía no hay mensajes guardados.", systemImage: "text.quote")
                             .foregroundStyle(.secondary)
                     }
 
@@ -47,7 +47,7 @@ struct ContentView: View {
                     .onDelete(perform: store.deletePhrases)
 
                     HStack(alignment: .bottom, spacing: 12) {
-                        TextField("Escribe una frase propia…", text: $newPhrase, axis: .vertical)
+                        TextField("Escribe un mensaje…", text: $newPhrase, axis: .vertical)
                             .lineLimit(1...4)
                             .textInputAutocapitalization(.sentences)
                         Button {
@@ -58,12 +58,10 @@ struct ContentView: View {
                                 .font(.title2)
                         }
                         .disabled(newPhrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityLabel("Agregar frase")
+                        .accessibilityLabel("Agregar mensaje")
                     }
-                } header: {
-                    Label("Mis frases (\(store.phrases.count))", systemImage: "text.quote")
                 } footer: {
-                    Text("Toca una frase para editarla. Deslízala a la izquierda para eliminarla. Se guardan solo en este iPhone.")
+                    Text("\(store.phrases.count) mensajes guardados en este iPhone. Toca uno para editarlo o deslízalo hacia la izquierda para borrarlo.")
                 }
 
                 Section {
@@ -80,13 +78,16 @@ struct ContentView: View {
                     HStack {
                         Text("Avisos diarios")
                         Spacer()
-                        Text("\(store.dailyTimes.count) / 64")
+                        Text("\(store.dailyTimes.count)")
                             .foregroundStyle(store.dailyTimes.count > 64 ? Color.red : Color.secondary)
                     }
+                    Text("Los mensajes cambian de orden también entre días. La app prepara hasta 64 avisos futuros y los repone al abrirse; iOS puede intentar renovarlos en segundo plano, pero no lo garantiza.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } header: {
                     Label("Horario", systemImage: "clock")
                 } footer: {
-                    Text("Se envían avisos hasta antes de la hora final. Si inicio y final son iguales, se usan 24 horas. Los horarios nocturnos también funcionan.")
+                    Text("La hora final está incluida si coincide con el intervalo. Por ejemplo, de 7:00 a 20:00 cada 30 minutos son 27 avisos diarios. Si desde y hasta coinciden, se usan 24 horas sin duplicar la última hora.")
                 }
 
                 Section {
@@ -96,10 +97,9 @@ struct ContentView: View {
                         HStack {
                             Spacer()
                             if store.isApplying {
-                                ProgressView()
-                                    .padding(.trailing, 8)
+                                ProgressView().padding(.trailing, 8)
                             }
-                            Label("Guardar y programar", systemImage: "bell.badge.fill")
+                            Label(store.needsProgramming ? "Aplicar cambios pendientes" : "Guardar y programar", systemImage: "bell.badge.fill")
                                 .fontWeight(.semibold)
                             Spacer()
                         }
@@ -111,23 +111,47 @@ struct ContentView: View {
                             .font(.subheadline)
                             .foregroundStyle(store.hasError ? Color.red : Color.secondary)
                     } icon: {
-                        Image(systemName: store.hasError ? "exclamationmark.triangle" : "checkmark.circle")
-                            .foregroundStyle(store.hasError ? Color.red : Color.green)
+                        Image(systemName: store.hasError ? "exclamationmark.triangle" : (store.needsProgramming ? "arrow.clockwise.circle" : "checkmark.circle"))
+                            .foregroundStyle(store.hasError ? Color.red : (store.needsProgramming ? Color.orange : Color.green))
                     }
                 } header: {
-                    Text("Aplicar cambios")
+                    Text("Notificaciones")
                 } footer: {
-                    Text("Después de agregar, editar o borrar frases, o cambiar el horario, pulsa «Guardar y programar» para actualizar los avisos. Cada horario conserva su frase hasta la siguiente programación.")
+                    Text("Para asegurar avisos continuos, abre la app cada 1–2 días. Con 27 avisos diarios, las 64 solicitudes cubren algo más de dos jornadas. No cierres la app a la fuerza si quieres que iOS tenga oportunidad de renovarlas en segundo plano.")
+                }
+
+                if let until = store.scheduledUntil {
+                    Section("Cobertura programada") {
+                        LabeledContent("Avisos pendientes", value: "\(store.scheduledCount)")
+                        LabeledContent("Último aviso preparado") {
+                            Text(until, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                        }
+                    }
+                }
+
+                if !store.upcomingNotices.isEmpty {
+                    Section("Próximos avisos") {
+                        ForEach(store.upcomingNotices) { notice in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(notice.date, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(notice.text)
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
                 }
             }
-            .navigationTitle("Frases Personales")
+            .disabled(store.isApplying)
+            .navigationTitle("Avisos")
             .sheet(item: $editingPhrase) { phrase in
                 EditPhraseSheet(phrase: phrase) { edited in
                     store.updatePhrase(id: phrase.id, text: edited)
                 }
             }
             .task {
-                await store.refreshScheduledCount()
+                await store.replenishIfNeeded()
             }
         }
     }
@@ -157,12 +181,12 @@ private struct EditPhraseSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Editar frase") {
-                    TextField("Frase", text: $draft, axis: .vertical)
+                Section("Editar mensaje") {
+                    TextField("Mensaje", text: $draft, axis: .vertical)
                         .lineLimit(3...8)
                 }
             }
-            .navigationTitle("Editar frase")
+            .navigationTitle("Editar mensaje")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
