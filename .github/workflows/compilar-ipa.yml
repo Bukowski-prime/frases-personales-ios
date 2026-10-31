@@ -1,0 +1,59 @@
+name: Compilar IPA de Frases Personales
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    name: Crear IPA sin firma
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generar proyecto Xcode
+        run: xcodegen generate --spec project.yml
+
+      - name: Compilar para un iPhone real (sin firma)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Frases.xcodeproj \
+            -scheme Frases \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/frases-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Empaquetar IPA para Sideloadly
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/frases-build/Build/Products/Release-iphoneos/Frases.app"
+          test -d "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/Frases.app
+          ditto -c -k --sequesterRsrc --keepParent Payload Frases-Personales-unsigned.ipa
+          unzip -t Frases-Personales-unsigned.ipa
+
+      - name: Descargar IPA desde Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Frases-Personales-IPA
+          path: Frases-Personales-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
