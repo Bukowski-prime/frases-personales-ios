@@ -9,8 +9,8 @@ settings:
     TARGETED_DEVICE_FAMILY: '1'
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Manual
-    GENERATE_INFOPLIST_FILE: 'YES'
-    INFOPLIST_KEY_CFBundleDisplayName: 'Mis Frases'
+    GENERATE_INFOPLIST_FILE: 'NO'
+    INFOPLIST_KEY_CFBundleDisplayName: 'Avisos'
     INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: 'YES'
     INFOPLIST_KEY_UILaunchScreen_Generation: 'YES'
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: 'UIInterfaceOrientationPortrait'
@@ -21,11 +21,19 @@ targets:
     deploymentTarget: '16.0'
     sources:
       - path: Frases
+    info:
+      path: Frases/Info.plist
+      properties:
+        CFBundleDisplayName: Avisos
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.personal.frases.refresh]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UILaunchScreen: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.frases
         PRODUCT_NAME: Frases
-        MARKETING_VERSION: '1.0.0'
-        CURRENT_PROJECT_VERSION: '1'
+        MARKETING_VERSION: '1.3.0'
+        CURRENT_PROJECT_VERSION: '4'
         CODE_SIGNING_ALLOWED: 'NO'
         CODE_SIGNING_REQUIRED: 'NO'
