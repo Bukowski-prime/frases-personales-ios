@@ -160,7 +160,7 @@ struct ContentView: View {
 
                 if !store.upcomingNotices.isEmpty {
                     Section("Próximos avisos") {
-                        ForEach(store.upcomingNotices) { notice in
+                        ForEach(store.upcomingNotices.prefix(3)) { notice in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(notice.date, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
                                     .font(.caption)
@@ -168,6 +168,12 @@ struct ContentView: View {
                                 Text(notice.text)
                                     .font(.subheadline)
                             }
+                        }
+
+                        NavigationLink {
+                            UpcomingNoticesListView(notices: store.upcomingNotices)
+                        } label: {
+                            Label("Ver 10, 20 o todos los avisos", systemImage: "list.bullet")
                         }
                     }
                 }
@@ -262,6 +268,47 @@ struct ContentView: View {
             return "Cada \(h) h \(m) min"
         }
         return "Cada \(minutes) minutos"
+    }
+}
+
+/// Consulta las notificaciones que ya están programadas en iOS.
+/// La vista sólo lee el calendario existente: no vuelve a mezclar ni reprograma frases.
+private struct UpcomingNoticesListView: View {
+    let notices: [UpcomingNotice]
+    @State private var visibleLimit = 10
+
+    private var visibleNotices: [UpcomingNotice] {
+        visibleLimit == 0 ? notices : Array(notices.prefix(visibleLimit))
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Picker("Mostrar avisos", selection: $visibleLimit) {
+                    Text("10").tag(10)
+                    Text("20").tag(20)
+                    Text("Todos").tag(0)
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("Mostrando \(visibleNotices.count) de \(notices.count) avisos pendientes.")
+            }
+
+            Section("Avisos ya programados") {
+                ForEach(visibleNotices) { notice in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(notice.date, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(notice.text)
+                            .font(.body)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .navigationTitle("Próximos avisos")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
