@@ -1,9 +1,18 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var store: PhraseStore
     @State private var newPhrase = ""
     @State private var editingPhrase: PersonalPhrase?
+    @State private var backupDocument: MessagesBackupDocument?
+    @State private var showingExporter = false
+    @State private var showingImporter = false
+    @State private var showingImportChoices = false
+    @State private var importedMessages: [String] = []
+    @State private var showingResult = false
+    @State private var resultTitle = ""
+    @State private var resultDetail = ""
 
     private var startTime: Binding<Date> {
         Binding(
@@ -62,6 +71,26 @@ struct ContentView: View {
                     }
                 } footer: {
                     Text("\(store.phrases.count) mensajes guardados en este iPhone. Toca uno para editarlo o deslízalo hacia la izquierda para borrarlo.")
+                }
+
+                Section {
+                    Button {
+                        backupDocument = MessagesBackupDocument(messages: store.phrases.map(\.text))
+                        showingExporter = true
+                    } label: {
+                        Label("Exportar respaldo", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(store.phrases.isEmpty)
+
+                    Button {
+                        showingImporter = true
+                    } label: {
+                        Label("Importar respaldo", systemImage: "square.and.arrow.down")
+                    }
+                } header: {
+                    Text("Copia de seguridad")
+                } footer: {
+                    Text("El archivo JSON contiene solamente tus mensajes. Puedes guardarlo en Archivos o iCloud Drive. Al importar, podrás combinarlos con los actuales o reemplazarlos. Después tendrás que pulsar «Guardar y programar».")
                 }
 
                 Section {
@@ -153,7 +182,75 @@ struct ContentView: View {
             .task {
                 await store.replenishIfNeeded()
             }
+            .fileExporter(
+                isPresented: $showingExporter,
+                document: backupDocument,
+                contentType: .json,
+                defaultFilename: "Avisos-respaldo"
+            ) { result in
+                switch result {
+                case .success:
+                    showResult(title: "Respaldo exportado", detail: "Comprueba que el archivo se guardó en la ubicación elegida.")
+                case .failure(let error):
+                    showResult(title: "No se pudo exportar", detail: error.localizedDescription)
+                }
+            }
+            .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
+                Task { @MainActor in
+                    switch result {
+                    case .success(let url):
+                        let hasAccess = url.startAccessingSecurityScopedResource()
+                        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+                        do {
+                            let data = try Data(contentsOf: url)
+                            importedMessages = try MessagesBackupDocument.decodeMessages(from: data)
+                            showingImportChoices = true
+                        } catch {
+                            showResult(title: "No se pudo importar", detail: error.localizedDescription)
+                        }
+                    case .failure(let error):
+                        showResult(title: "No se pudo abrir el archivo", detail: error.localizedDescription)
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Restaurar respaldo",
+                isPresented: $showingImportChoices,
+                titleVisibility: .visible
+            ) {
+                Button("Combinar con los mensajes actuales") {
+                    finishImport(replacing: false)
+                }
+                Button("Reemplazar todos los mensajes", role: .destructive) {
+                    finishImport(replacing: true)
+                }
+                Button("Cancelar", role: .cancel) {
+                    importedMessages = []
+                }
+            } message: {
+                Text("El archivo contiene \(importedMessages.count) mensajes. Combinar evita duplicados. Reemplazar borrará tus mensajes actuales. Esta acción no modifica el horario.")
+            }
+            .alert(resultTitle, isPresented: $showingResult) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(resultDetail)
+            }
         }
+    }
+
+    private func showResult(title: String, detail: String) {
+        resultTitle = title
+        resultDetail = detail
+        showingResult = true
+    }
+
+    private func finishImport(replacing: Bool) {
+        let result = store.restoreMessages(importedMessages, replacing: replacing)
+        importedMessages = []
+        showResult(
+            title: "Respaldo importado",
+            detail: "Se incorporaron \(result.imported) mensajes. Total: \(result.total). Pulsa «Guardar y programar» para actualizar las próximas notificaciones."
+        )
     }
 
     private func intervalLabel(_ minutes: Int) -> String {
