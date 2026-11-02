@@ -153,7 +153,7 @@ struct ContentView: View {
                     Section("Cobertura programada") {
                         LabeledContent("Avisos pendientes", value: "\(store.scheduledCount)")
                         LabeledContent("Último aviso preparado") {
-                            Text(until, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                            Text(AvisosFechas.string(from: until))
                         }
                     }
                 }
@@ -162,7 +162,7 @@ struct ContentView: View {
                     Section("Próximos avisos") {
                         ForEach(store.upcomingNotices.prefix(3)) { notice in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(notice.date, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                                Text(AvisosFechas.string(from: notice.date))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text(notice.text)
@@ -297,7 +297,7 @@ private struct UpcomingNoticesListView: View {
             Section("Avisos ya programados") {
                 ForEach(visibleNotices) { notice in
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(notice.date, format: .dateTime.weekday(.wide).day().month(.abbreviated).hour().minute())
+                        Text(AvisosFechas.string(from: notice.date))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(notice.text)
@@ -345,5 +345,20 @@ private struct EditPhraseSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Formato estable para mostrar horarios en español, incluso cuando iOS
+/// está configurado en otro idioma. Solo afecta a la interfaz de Avisos.
+private enum AvisosFechas {
+    static func string(from date: Date) -> String {
+        let locale = Locale(identifier: "es_MX")
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "EEEE d 'de' MMMM, h:mm a"
+        formatter.amSymbol = "a. m."
+        formatter.pmSymbol = "p. m."
+        let result = formatter.string(from: date)
+        return result.prefix(1).uppercased(with: locale) + String(result.dropFirst())
     }
 }
