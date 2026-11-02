@@ -21,6 +21,52 @@ private struct SavedSettings: Codable {
     var notificationsEnabled: Bool
 }
 
+// Estado de la ronda de mezcla. Se guarda al programar nuevas solicitudes para
+// continuar donde terminó la ronda anterior, incluso tras cerrar la aplicación.
+// BEGIN SHUFFLE CORE
+private struct ShuffleBagState: Codable {
+    var remainingIDs: [UUID] = []
+    var lastID: UUID?
+}
+
+private enum ShuffleBagMixer {
+    /// Cada ronda es una permutación completa. Al empezar otra ronda,
+    /// su primer mensaje es distinto del último de la ronda anterior.
+    static func draw(
+        count: Int,
+        messages: [(id: UUID, text: String)],
+        state original: ShuffleBagState
+    ) -> (texts: [String], state: ShuffleBagState) {
+        guard count > 0, !messages.isEmpty else { return ([], original) }
+
+        let choices = messages.map { $0.id }
+        let allowed = Set(choices)
+        let textByID = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0.text) })
+        var state = original
+        state.remainingIDs = state.remainingIDs.filter { allowed.contains($0) }
+        if let last = state.lastID, !allowed.contains(last) { state.lastID = nil }
+
+        var results: [String] = []
+        results.reserveCapacity(count)
+        for _ in 0..<count {
+            if state.remainingIDs.isEmpty {
+                state.remainingIDs = choices.shuffled()
+                // Sacamos del final de la bolsa: ese será el primer aviso.
+                if state.remainingIDs.count > 1,
+                   state.remainingIDs.last == state.lastID {
+                    let other = Int.random(in: 0..<(state.remainingIDs.count - 1))
+                    state.remainingIDs.swapAt(other, state.remainingIDs.count - 1)
+                }
+            }
+            let next = state.remainingIDs.removeLast()
+            if let text = textByID[next] { results.append(text) }
+            state.lastID = next
+        }
+        return (results, state)
+    }
+}
+// END SHUFFLE CORE
+
 @MainActor
 final class PhraseStore: ObservableObject {
     static let possibleIntervals = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 720, 1440]
@@ -28,7 +74,8 @@ final class PhraseStore: ObservableObject {
 
     // Mismo identificador de almacenamiento que v1.0: conserva los mensajes.
     private static let defaultsKey = "FrasesPersonales.settings.v1"
-    private static let appliedKey = "FrasesPersonales.appliedSettings.v1.3"
+    private static let appliedKey = "FrasesPersonales.appliedSettings.v1.4"
+    private static let shuffleKey = "FrasesPersonales.shuffleBag.v1.4"
     private static let notificationPrefix = "personal-phrase-slot-"
 
     @Published var phrases: [PersonalPhrase] = [] { didSet { settingsChanged() } }
@@ -182,6 +229,11 @@ final class PhraseStore: ObservableObject {
             }
         }
 
+        // Nueva programación explícita: reiniciar la ronda, sin conservar
+        // ninguna de las solicitudes futuras de la configuración anterior.
+        UserDefaults.standard.removeObject(forKey: Self.appliedKey)
+        UserDefaults.standard.removeObject(forKey: Self.shuffleKey)
+        needsProgramming = true
         let pending = await existingRequests(center: center)
         center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier))
         if !notificationsEnabled {
@@ -202,7 +254,7 @@ final class PhraseStore: ObservableObject {
             needsProgramming = false
             hasError = false
             await refreshPending()
-            statusMessage = "Rotación aleatoria entre días activada. Abre la app cada 1–2 días para asegurar la renovación."
+            statusMessage = "Mezcla sin repeticiones activada. Abre la app cada 1–2 días para asegurar la renovación."
             BackgroundRefreshController.shared.requestRefresh()
         } catch {
             let added = await existingRequests(center: center)
@@ -222,21 +274,58 @@ final class PhraseStore: ObservableObject {
         let latestDate = existing.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }.max()
         let afterDate = max(now, latestDate ?? now)
         let futureDates = nextScheduledDates(after: afterDate, limit: count)
-        let lastText = existing.compactMap { request -> (Date, String)? in
-            guard let date = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() else { return nil }
-            return (date, request.content.body)
-        }.max(by: { $0.0 < $1.0 })?.1
-        let texts = randomTexts(count: futureDates.count, avoidingFirst: lastText)
-        let calendar = Calendar.current
-        for (date, text) in zip(futureDates, texts) {
-            let content = UNMutableNotificationContent()
-            content.body = text
-            content.sound = .default
-            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-            let identifier = Self.notificationPrefix + String(Int(date.timeIntervalSince1970))
-            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+
+        // Recuperar la bolsa anterior para no reiniciar una ronda al reponer
+        // notificaciones. Si no existe, recuperar al menos el último mensaje
+        // pendiente y así evitar una repetición inmediata durante la migración.
+        var state = loadShuffleBag()
+        if state == nil {
+            let mostRecent = existing.compactMap { request -> (Date, String)? in
+                guard let date = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() else { return nil }
+                return (date, request.content.body)
+            }.max(by: { $0.0 < $1.0 })?.1
+            state = ShuffleBagState()
+            if let mostRecent {
+                state?.lastID = phrases.first(where: { Self.sameText($0.text, mostRecent) })?.id
+            }
         }
+
+        var known = Set<String>()
+        let uniqueMessages: [(id: UUID, text: String)] = phrases.compactMap { phrase in
+            guard known.insert(Self.normalized(phrase.text)).inserted else { return nil }
+            return (id: phrase.id, text: phrase.text)
+        }
+        let shuffled = ShuffleBagMixer.draw(
+            count: futureDates.count,
+            messages: uniqueMessages,
+            state: state ?? ShuffleBagState()
+        )
+        let calendar = Calendar.current
+        var addedIDs: [String] = []
+        do {
+            for (date, text) in zip(futureDates, shuffled.texts) {
+                let content = UNMutableNotificationContent()
+                content.body = text
+                content.sound = .default
+                let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                let identifier = Self.notificationPrefix + String(Int(date.timeIntervalSince1970))
+                try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+                addedIDs.append(identifier)
+            }
+        } catch {
+            // No avanzar la bolsa si sólo se programó una parte de la tanda.
+            center.removePendingNotificationRequests(withIdentifiers: addedIDs)
+            throw error
+        }
+        if let data = try? JSONEncoder().encode(shuffled.state) {
+            UserDefaults.standard.set(data, forKey: Self.shuffleKey)
+        }
+    }
+
+    private func loadShuffleBag() -> ShuffleBagState? {
+        guard let data = UserDefaults.standard.data(forKey: Self.shuffleKey) else { return nil }
+        return try? JSONDecoder().decode(ShuffleBagState.self, from: data)
     }
 
     // Fecha concreta para cada aviso; no se reutiliza el contenido al día siguiente.
@@ -263,29 +352,6 @@ final class PhraseStore: ObservableObject {
             }
         }
         return Array(dates.sorted().prefix(limit))
-    }
-
-    private func randomTexts(count: Int, avoidingFirst previousText: String?) -> [String] {
-        var seen = Set<String>()
-        let choices = phrases.map(\.text).filter { seen.insert(Self.normalized($0)).inserted }
-        guard !choices.isEmpty else { return [] }
-        if choices.count == 1 { return Array(repeating: choices[0], count: count) }
-        var lastText = previousText.map(Self.normalized)
-        var bag: [String] = []
-        var sequence: [String] = []
-        for _ in 0..<count {
-            if bag.isEmpty {
-                bag = choices.shuffled()
-                if Self.normalized(bag[0]) == lastText,
-                   let index = bag.indices.dropFirst().first(where: { Self.normalized(bag[$0]) != lastText }) {
-                    bag.swapAt(0, index)
-                }
-            }
-            let next = bag.removeFirst()
-            sequence.append(next)
-            lastText = Self.normalized(next)
-        }
-        return sequence
     }
 
     private func existingRequests(center: UNUserNotificationCenter) async -> [UNNotificationRequest] {
