@@ -1,0 +1,29 @@
+
+# macOS y Windows
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcresult
+
+# Proyecto generado por XcodeGen
+*.xcodeproj/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Archivos de compilación
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Archivos temporales
+*.swp
+*.tmp
+*.log
