@@ -2,9 +2,33 @@ import Foundation
 import Combine
 import UserNotifications
 
+// Compatible con la persistencia JSON de versiones anteriores.
+// Conformidad Codable explícita para evitar errores de síntesis al guardar
+// o restaurar [PersonalPhrase] dentro de SavedSettings.
 struct PersonalPhrase: Codable, Identifiable, Equatable {
-    var id: UUID = UUID()
+    var id: UUID
     var text: String
+
+    init(id: UUID = UUID(), text: String) {
+        self.id = id
+        self.text = text
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        text = try container.decode(String.self, forKey: .text)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+    }
 }
 
 struct UpcomingNotice: Identifiable {
@@ -369,7 +393,7 @@ final class PhraseStore: ObservableObject {
         }.sorted { $0.date < $1.date }
         scheduledCount = requests.count
         scheduledUntil = sorted.last?.date
-        upcomingNotices = Array(sorted.prefix(3))
+        upcomingNotices = sorted
     }
 
     private func rememberAppliedSettings() {
