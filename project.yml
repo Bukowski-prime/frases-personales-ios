@@ -10,7 +10,7 @@ settings:
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Manual
     GENERATE_INFOPLIST_FILE: 'NO'
-    INFOPLIST_KEY_CFBundleDisplayName: 'Avisos'
+    "\u200B"
     INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: 'YES'
     INFOPLIST_KEY_UILaunchScreen_Generation: 'YES'
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: 'UIInterfaceOrientationPortrait'
@@ -24,7 +24,7 @@ targets:
     info:
       path: Frases/Info.plist
       properties:
-        CFBundleDisplayName: Avisos
+        "\u200B"
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [com.personal.frases.refresh]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
