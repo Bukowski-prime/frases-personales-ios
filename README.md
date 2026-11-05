@@ -1,11 +1,14 @@
 
 ## 📌 DOCUMENTACIÓN IMPORTANTE
 
-**[📖 ABRIR CONTEXTO DEL PROYECTO AVISOS](docs/CONTEXTO_PROYECTO_AVISOS.md)**
+### 📖 [CONTEXTO COMPLETO DE AVISOS](docs/CONTEXTO_PROYECTO_AVISOS.md)
+Información técnica, funciones y actualizaciones.
 
-Aquí se encuentra toda la información necesaria para mantener, actualizar y modificar la aplicación con ayuda de IA.
+### 💬 [INICIAR NUEVO CHAT CON IA](docs/INICIAR_NUEVO_CHAT.md)
+Mensaje preparado para continuar desarrollando Avisos.
 
 ---
+
 
 # Frases Personales — aplicación nativa iOS (SwiftUI)
 
