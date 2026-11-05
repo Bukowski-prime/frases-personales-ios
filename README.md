@@ -1,3 +1,12 @@
+
+## 📌 DOCUMENTACIÓN IMPORTANTE
+
+**[📖 ABRIR CONTEXTO DEL PROYECTO AVISOS](docs/CONTEXTO_PROYECTO_AVISOS.md)**
+
+Aquí se encuentra toda la información necesaria para mantener, actualizar y modificar la aplicación con ayuda de IA.
+
+---
+
 # Frases Personales — aplicación nativa iOS (SwiftUI)
 
 Proyecto personal para iPhone, desarrollado con **SwiftUI**, compilado en **GitHub Actions** sin firma y preparado para instalación desde **Windows con Sideloadly**.
